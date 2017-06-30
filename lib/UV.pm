@@ -1,10 +1,15 @@
 package UV;
-use strict;
-use XSLoader;
 
 our $VERSION = '0.24';
+our $XS_VERSION = $VERSION;
+$VERSION = eval $VERSION;
 
-XSLoader::load __PACKAGE__, $VERSION;
+use strict;
+use warnings;
+use Exporter qw(import);
+require XSLoader;
+
+XSLoader::load('UV', $XS_VERSION);
 
 1;
 
@@ -17,33 +22,33 @@ UV - perl interface to libuv
 =head1 SYNOPSIS
 
     use UV;
-    
+
     # TIMERS
     my $timer = UV::timer_init();
     UV::timer_start($timer, 2000, 0, sub {
         warn "is called after 2000ms";
     });
-    
+
     my $timer = UV::timer_init();
     UV::timer_start($timer, 2000, 2000, sub {
         warn "is called roughly every 2s (repeat = 2)";
     });
-    
+
     UV::timer_stop($timer); # stop timer
     UV::close($timer); # destroy timer object
-    
+
     # IO (Simple tcp echo server)
     my $server = UV::tcp_init();
     UV::tcp_bind($server, '0.0.0.0', 5000)
         && die 'bind error: ', UV::strerror(UV::last_error());
-    
+
     UV::listen($server, 10, sub {
         my $client = UV::tcp_init();
         UV::accept($server, $client) && die 'accept failed: ', UV::strerror(UV::last_error());
-    
+
         UV::read_start($client, sub {
             my ($nread, $buf) = @_;
-    
+
             if ($nread < 0) {
                 my $err = UV::last_error();
                 if ($err != UV::EOF) {
@@ -57,7 +62,7 @@ UV - perl interface to libuv
             else {
                 UV::write($client, $buf, sub {
                     my ($status) = @_;
-    
+
                     if ($status) {
                         warn 'client write error: ', UV::strerror(UV::last_error());
                         UV::close($client);
@@ -65,9 +70,9 @@ UV - perl interface to libuv
                 });
             }
         });
-    
+
     }) && die 'listen error: ', UV::strerror(UV::last_error());
-    
+
     # MAINLOOP
     UV::run()
 

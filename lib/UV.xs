@@ -1,7 +1,8 @@
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
-#define NEED_sv_2pvbyte
+#define NEED_newCONSTSUB
+#define NEED_sv_2pv_flags
 #include "ppport.h"
 
 #include <assert.h>
@@ -9,13 +10,6 @@
 #include <string.h>
 
 #include <uv.h>
-
-#define UV_ERRNO_CONST_GEN(val, name, s) \
-    newCONSTSUB(stash, #name, newSViv(val));
-
-#define UV_CONST_GEN(uc, lc) \
-    newCONSTSUB(stash, #uc, newSViv(UV_##uc));    \
-    newCONSTSUB(stash, "UV_" #uc, newSViv(UV_##uc));
 
 /* Handle wrappers */
 typedef struct p5uv_handle_s p5uv_handle_t;
@@ -347,7 +341,7 @@ static void connect_cb(uv_connect_t* req, int status) {
     Safefree(req);
 }
 
-static uv_buf_t alloc_cb(uv_handle_t* handle, size_t suggested_size) {
+static void alloc_cb(uv_handle_t* handle, size_t suggested_size, struct uv_buf_t *buff) {
     char* buf;
 
     PERL_UNUSED_ARG(handle);
@@ -488,8 +482,8 @@ static void send_cb(uv_udp_send_t* req, int status) {
     Safefree(req);
 }
 
-static void recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf,
-    struct sockaddr* addr, unsigned flags) {
+static void recv_cb(uv_udp_t* handle, ssize_t nread, const struct uv_buf_t* buf,
+    const struct sockaddr* addr, unsigned flags) {
 
     SV* sv_nread;
     SV* sv_buf;
@@ -561,54 +555,41 @@ static void recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf,
     free(buf.base);
 }
 
-static void prepare_cb(uv_prepare_t* handle, int status) {
-    SV* sv_status;
+static void prepare_cb(uv_prepare_t* handle) {
     p5uv_prepare_t* p5prepare = (p5uv_prepare_t*)handle->data;
     dSP;
 
-    sv_status = sv_2mortal(newSViv(status));
-
     ENTER;
     SAVETMPS;
 
-    PUSHMARK(SP);
-    XPUSHs(sv_status);
     PUTBACK;
 
-    call_sv(p5prepare->cb, G_SCALAR);
+    call_sv(p5prepare->cb, G_VOID);
 
     SPAGAIN;
 
-    PUTBACK;
     FREETMPS;
     LEAVE;
 }
 
-static void check_cb(uv_check_t* handle, int status) {
-    SV* sv_status;
+static void check_cb(uv_check_t* handle) {
     p5uv_check_t* p5check = (p5uv_check_t*)handle->data;
     dSP;
 
-    sv_status = sv_2mortal(newSViv(status));
-
     ENTER;
     SAVETMPS;
 
-    PUSHMARK(SP);
-    XPUSHs(sv_status);
     PUTBACK;
 
-    call_sv(p5check->cb, G_SCALAR);
+    call_sv(p5check->cb, G_VOID);
 
     SPAGAIN;
 
-    PUTBACK;
     FREETMPS;
     LEAVE;
 }
 
-static void idle_cb(uv_idle_t* handle, int status) {
-    SV* sv_status;
+static void idle_cb(uv_idle_t* handle) {
     p5uv_idle_t* p5idle = (p5uv_idle_t*)handle->data;
 
     dSP;
@@ -616,23 +597,17 @@ static void idle_cb(uv_idle_t* handle, int status) {
     ENTER;
     SAVETMPS;
 
-    sv_status = sv_2mortal(newSViv(status));
-
-    PUSHMARK(SP);
-    XPUSHs(sv_status);
     PUTBACK;
 
-    call_sv(p5idle->cb, G_SCALAR);
+    call_sv(p5idle->cb, G_VOID);
 
     SPAGAIN;
 
-    PUTBACK;
     FREETMPS;
     LEAVE;
 }
 
-static void async_cb(uv_async_t* handle, int status) {
-    SV* sv_status;
+static void async_cb(uv_async_t* handle) {
     p5uv_async_t* p5async = (p5uv_async_t*)handle->data;
 
     dSP;
@@ -640,23 +615,18 @@ static void async_cb(uv_async_t* handle, int status) {
     ENTER;
     SAVETMPS;
 
-    sv_status = sv_2mortal(newSViv(status));
 
-    PUSHMARK(SP);
-    XPUSHs(sv_status);
     PUTBACK;
 
-    call_sv(p5async->cb, G_SCALAR);
+    call_sv(p5async->cb, G_VOID);
 
     SPAGAIN;
 
-    PUTBACK;
     FREETMPS;
     LEAVE;
 }
 
-static void timer_cb(uv_timer_t* handle, int status) {
-    SV* sv_status;
+static void timer_cb(uv_timer_t* handle) {
     p5uv_timer_t* p5timer = (p5uv_timer_t*)handle->data;
 
     dSP;
@@ -664,17 +634,12 @@ static void timer_cb(uv_timer_t* handle, int status) {
     ENTER;
     SAVETMPS;
 
-    sv_status = sv_2mortal(newSViv(status));
-
-    PUSHMARK(SP);
-    XPUSHs(sv_status);
     PUTBACK;
 
-    call_sv(p5timer->cb, G_SCALAR);
+    call_sv(p5timer->cb, G_VOID);
 
     SPAGAIN;
 
-    PUTBACK;
     FREETMPS;
     LEAVE;
 }
@@ -766,17 +731,13 @@ PROTOTYPES: DISABLE
 
 BOOT:
 {
-    HV* stash = gv_stashpv("UV", 1);
+    HV *stash = gv_stashpvn("UV", 2, TRUE);
 
-    /* errno */
-    UV_ERRNO_MAP(UV_ERRNO_CONST_GEN);
 
     /* handle type */
-    UV_HANDLE_TYPE_MAP(UV_CONST_GEN);
     newCONSTSUB(stash, "FILE", newSViv(UV_FILE));
 
     /* req type */
-    UV_REQ_TYPE_MAP(UV_CONST_GEN);
 
     /* run mode */
     newCONSTSUB(stash, "RUN_DEFAULT", newSViv(UV_RUN_DEFAULT));
@@ -847,39 +808,23 @@ CODE:
 OUTPUT:
     RETVAL
 
-int
-uv_last_error()
+void uv_last_error()
 CODE:
 {
-    uv_err_t err;
-
-    err = uv_last_error(uv_default_loop());
-    RETVAL = err.code;
+    warn("uv_last_error() is deprecated.");
 }
-OUTPUT:
-    RETVAL
 
-const char*
-uv_strerror(int code)
+void uv_strerror(int code)
 CODE:
 {
-    uv_err_t err;
-    err.code = code;
-    RETVAL = uv_strerror(err);
+    warn("uv_strerror() is deprecated.");
 }
-OUTPUT:
-    RETVAL
 
-const char*
-uv_err_name(int code)
+void uv_err_name(int code)
 CODE:
 {
-    uv_err_t err;
-    err.code = code;
-    RETVAL = uv_err_name(err);
+    warn("uv_err_name() is deprecated.");
 }
-OUTPUT:
-    RETVAL
 
 int
 uv_shutdown(uv_stream_t* handle, SV* cb)
@@ -1080,7 +1025,9 @@ int
 uv_tcp_bind(uv_tcp_t* tcp, const char* ip, int port)
 CODE:
 {
-    RETVAL = uv_tcp_bind(tcp, uv_ip4_addr(ip, port));
+    struct sockaddr_in addr;
+    uv_ip4_addr(ip, port, &addr);
+    RETVAL = uv_tcp_bind(tcp, (const struct sockaddr*) &addr, 0);
 }
 OUTPUT:
     RETVAL
@@ -1089,7 +1036,9 @@ int
 uv_tcp_bind6(uv_tcp_t* tcp, const char* ip, int port)
 CODE:
 {
-    RETVAL = uv_tcp_bind6(tcp, uv_ip6_addr(ip, port));
+    struct sockaddr_in6 addr;
+    uv_ip6_addr(ip, port, &addr);
+    RETVAL = uv_tcp_bind(tcp, (const struct sockaddr*) &addr, 0);
 }
 OUTPUT:
     RETVAL
@@ -1183,6 +1132,7 @@ uv_tcp_connect(uv_tcp_t* tcp, const char* ip, int port, SV* cb)
 CODE:
 {
     uv_connect_t* req;
+    struct sockaddr_in addr;
     p5uv_tcp_t* p5tcp = (p5uv_tcp_t*)tcp->data;
 
     if (p5tcp->connect_cb)
@@ -1191,7 +1141,8 @@ CODE:
 
     Newx(req, 1, uv_connect_t);
 
-    RETVAL = uv_tcp_connect(req, tcp, uv_ip4_addr(ip, port), connect_cb);
+    uv_ip4_addr(ip, port, &addr);
+    RETVAL = uv_tcp_connect(req, tcp, (const struct sockaddr*) &addr, connect_cb);
 }
 OUTPUT:
     RETVAL
@@ -1200,6 +1151,7 @@ int
 uv_tcp_connect6(uv_tcp_t* tcp, const char* ip, int port, SV* cb)
 CODE:
 {
+    struct sockaddr_in6 addr;
     uv_connect_t* req;
     p5uv_tcp_t* p5tcp = (p5uv_tcp_t*)tcp->data;
 
@@ -1209,7 +1161,8 @@ CODE:
 
     Newx(req, 1, uv_connect_t);
 
-    RETVAL = uv_tcp_connect6(req, tcp, uv_ip6_addr(ip, port), connect_cb);
+    uv_ip6_addr(ip, port, &addr);
+    RETVAL = uv_tcp_connect(req, tcp, (const struct sockaddr*) &addr, connect_cb);
 }
 OUTPUT:
     RETVAL
@@ -1239,7 +1192,9 @@ int
 uv_udp_bind(uv_udp_t* udp, const char* ip, int port, int flags = 0)
 CODE:
 {
-    RETVAL = uv_udp_bind(udp, uv_ip4_addr(ip, port), flags);
+    struct sockaddr_in addr;
+    uv_ip4_addr(ip, port, &addr);
+    RETVAL = uv_udp_bind(udp, (const struct sockaddr*) &addr, flags);
 }
 OUTPUT:
     RETVAL
@@ -1248,7 +1203,9 @@ int
 uv_udp_bind6(uv_udp_t* udp, const char* ip, int port, int flags = 0)
 CODE:
 {
-    RETVAL = uv_udp_bind6(udp, uv_ip6_addr(ip, port), flags);
+    struct sockaddr_in6 addr;
+    uv_ip6_addr(ip, port, &addr);
+    RETVAL = uv_udp_bind(udp, (const struct sockaddr*) &addr, flags);
 }
 OUTPUT:
     RETVAL
@@ -1313,6 +1270,7 @@ int
 uv_udp_send(uv_udp_t* udp, SV* sv_buf, const char* ip, int port, SV* cb = NULL)
 CODE:
 {
+    struct sockaddr_in addr;
     p5uv_udp_t* p5udp = (p5uv_udp_t*)udp->data;
     char* buf;
     STRLEN len;
@@ -1333,7 +1291,8 @@ CODE:
     buf = SvPV(sv_buf, len);
     b   = uv_buf_init(buf, len);
 
-    RETVAL = uv_udp_send(req, udp, &b, 1, uv_ip4_addr(ip, port), send_cb);
+    uv_ip4_addr(ip, port, &addr);
+    RETVAL = uv_udp_send(req, udp, &b, 1, (const struct sockaddr*) &addr, send_cb);
 }
 OUTPUT:
     RETVAL
@@ -1342,6 +1301,7 @@ int
 uv_udp_send6(uv_udp_t* udp, SV* sv_buf, const char* ip, int port, SV* cb = NULL)
 CODE:
 {
+    struct sockaddr_in6 addr;
     p5uv_udp_t* p5udp = (p5uv_udp_t*)udp->data;
     char* buf;
     STRLEN len;
@@ -1362,7 +1322,8 @@ CODE:
     buf = SvPV(sv_buf, len);
     b   = uv_buf_init(buf, len);
 
-    RETVAL = uv_udp_send6(req, udp, &b, 1, uv_ip6_addr(ip, port), send_cb);
+    uv_ip6_addr(ip, port, &addr);
+    RETVAL = uv_udp_send(req, udp, &b, 1, (const struct sockaddr*) &addr, send_cb);
 }
 OUTPUT:
     RETVAL
@@ -1741,7 +1702,7 @@ CODE:
 {
     uv_interface_address_t* addresses;
     int count;
-    uv_err_t err;
+    int err;
     int i, r;
     HV* hv;
     AV* av;
@@ -1750,7 +1711,7 @@ CODE:
 
     err = uv_interface_addresses(&addresses, &count);
 
-    if (0 == err.code) {
+    if (0 == err) {
         av = (AV*)sv_2mortal((SV*)newAV());
 
         for (i = 0; i < count; i++) {
@@ -1813,4 +1774,3 @@ CODE:
 }
 OUTPUT:
     RETVAL
-

@@ -1,5 +1,14 @@
 Revision history for Perl extension UV
 
+0.25    2017-06-29
+    - Removed libuv's license as their code is no longer shipped with this Dist
+    - Licensed code under the same terms as Perl itself
+    - Removed libuv's source code
+    - Moved XS code to the lib dir
+    - Moved to ExtUtils::MakeMaker
+    - Moved typemap to root
+    - Use Alien::libuv instead of bundled copy
+
 0.24 2013-03-29T17:00:00+09:00
      - fixed a packaging issue
 

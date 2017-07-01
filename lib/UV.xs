@@ -1,6 +1,7 @@
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
+
 #define NEED_newCONSTSUB
 #define NEED_sv_2pv_flags
 #include "ppport.h"
@@ -351,10 +352,10 @@ static void alloc_cb(uv_handle_t* handle, size_t suggested_size, struct uv_buf_t
         croak("cannot allocate buffer");
     }
 
-    return uv_buf_init(buf, suggested_size);
+    uv_buf_init(buf, suggested_size);
 }
 
-static void read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf) {
+static void read_cb(uv_stream_t* stream, ssize_t nread, const struct uv_buf_t *buf) {
     SV* sv_nread;
     SV* sv_buf;
     p5uv_stream_t* p5stream = (p5uv_stream_t*)stream->data;
@@ -366,7 +367,7 @@ static void read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf) {
 
     sv_nread = sv_2mortal(newSViv(nread));
     if (nread > 0) {
-        sv_buf = sv_2mortal(newSVpv(buf.base, nread));
+        sv_buf = sv_2mortal(newSVpv(buf->base, nread));
     }
     else {
         sv_buf = sv_2mortal(newSV(0));
@@ -377,7 +378,7 @@ static void read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf) {
     XPUSHs(sv_buf);
     PUTBACK;
 
-    call_sv(p5stream->read_cb, G_SCALAR);
+    call_sv(p5stream->read_cb, G_VOID);
 
     SPAGAIN;
 
@@ -385,7 +386,7 @@ static void read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf) {
     FREETMPS;
     LEAVE;
 
-    free(buf.base);
+    free(buf->base);
 }
 
 static void read2_cb(uv_pipe_t* pipe, ssize_t nread, uv_buf_t buf, uv_handle_type pending) {
@@ -470,7 +471,7 @@ static void send_cb(uv_udp_send_t* req, int status) {
         XPUSHs(sv_status);
         PUTBACK;
 
-        call_sv(p5udp->send_cb, G_SCALAR);
+        call_sv(p5udp->send_cb, G_VOID);
 
         SPAGAIN;
 
@@ -502,7 +503,7 @@ static void recv_cb(uv_udp_t* handle, ssize_t nread, const struct uv_buf_t* buf,
     sv_nread = sv_2mortal(newSViv(nread));
     sv_flags = sv_2mortal(newSViv(flags));
     if (nread > 0) {
-        sv_buf = sv_2mortal(newSVpv(buf.base, nread));
+        sv_buf = sv_2mortal(newSVpv(buf->base, nread));
     }
     else {
         sv_buf = sv_2mortal(newSV(0));
@@ -552,7 +553,7 @@ static void recv_cb(uv_udp_t* handle, ssize_t nread, const struct uv_buf_t* buf,
     FREETMPS;
     LEAVE;
 
-    free(buf.base);
+    free(buf->base);
 }
 
 static void prepare_cb(uv_prepare_t* handle) {
@@ -921,7 +922,14 @@ CODE:
         SvREFCNT_dec(p5stream->read_cb);
     p5stream->read_cb = SvREFCNT_inc(cb);
 
+    /*
+    while (uv_pipe_pending_count((uv_pipe_t*) stream) != 0) {
+        pending = uv_pipe_pending_type((uv_pipe_t*) stream);
+        ...
+    }
     RETVAL = uv_read2_start(stream, alloc_cb, read2_cb);
+    */
+    RETVAL = 0;
 }
 OUTPUT:
     RETVAL

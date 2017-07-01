@@ -1,7 +1,5 @@
 inc/
 pm_to_blib
-META.yml
-MYMETA.yml
 Makefile
 Makefile.old
 ppport.h
@@ -9,5 +7,6 @@ ppport.h
 blib/
 test.pl
 *.o
-src/UV.c
 MYMETA.json
+MYMETA.yml
+lib/UV.c
